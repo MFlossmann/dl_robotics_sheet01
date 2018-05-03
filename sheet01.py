@@ -33,10 +33,6 @@ data_transforms = {
     ])
 }
 
-image_datasets = {}
-dataloaders = {}
-dataset_sizes = {}
-
 training_dataset = datasets.ImageFolder(os.path.join(data_dir, "Final_{}".format('Training'), "Images"),
                                         data_transforms['Training'])
 
@@ -62,16 +58,14 @@ print("Datasize for training: {0}\nLength dataloader: {1}\nAmount classes: {2}"
               len(dataloader),
               len(class_names)))
 
-exit(0)
-
 # -------------------- Define the net architechture
 
-torch.manual_seed(1)
-device = torch.device("cuda")
+# torch.manual_seed(1)
+# device = torch.device("cuda")
 
 KERNEL_SIZE = 3
 CONV_STRIDE = 2
-conv_size = lambda w: (w - KERNEL_SIZE + 2*0)/CONV_STRIDE + 1
+conv_size = lambda w: (w - KERNEL_SIZE + 2*2)/CONV_STRIDE + 1
 
 DEPTH1 = 10
 DEPTH2 = 20
@@ -79,16 +73,17 @@ DEPTH2 = 20
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, DEPTH1, kernel_size=KERNEL_SIZE)
-        self.conv2 = nn.Conv2d(DEPTH1, DEPTH2, kernel_size=KERNEL_SIZE)
+        self.conv1 = nn.Conv2d(3, DEPTH1, kernel_size=KERNEL_SIZE, padding=2)
+        self.conv2 = nn.Conv2d(DEPTH1, DEPTH2, kernel_size=KERNEL_SIZE, padding=2)
         self.conv2_drop = nn.Dropout2d()
         self.fc1 = nn.Linear(980, 512)
         self.fc2 = nn.Linear(512, amount_classes)
         self.sm = nn.Softmax()
 
     def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2, stride=2))
-        x = F.relu(F.max_pool2d(self.conv2drop(self.conv2(x), 2, stride=2)))
+        print("Forward argument: {}".format(x))
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2drop(self.conv2(x), 2)))
 
         current_depth = conv_size(conv_size(32))*DEPTH2 / 4
 
@@ -99,14 +94,16 @@ class Net(nn.Module):
 
         return F.softmax(x, dim=3)
 
-model = Net().to(device)
+model = Net()  # .to(device)
 optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
 
+
 def train(epoch):
+    print("train")
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (data, target) in enumerate(dataloader):
         # Move the input and target data on the GPU
-        data, target = data.to(device), target.to(device)
+        # data, target = data.to(device), target.to(device)
         # Zero out gradients from previous step
         optimizer.zero_grad()
         # Forward pass of the neural net
@@ -119,8 +116,8 @@ def train(epoch):
         optimizer.step()
         if batch_idx % 10 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
+                epoch, batch_idx * len(data), len(dataloader.dataset),
+                100. * batch_idx / len(dataloader), loss.item()))
 
 num_train_epochs = 5
 for epoch in range(1, num_train_epochs + 1):
