@@ -1,1 +1,6 @@
 data/*
+
+*.aux
+*.toc
+*.log
+auto/*

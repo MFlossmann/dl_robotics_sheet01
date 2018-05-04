@@ -83,7 +83,7 @@ class Net(nn.Module):
     def forward(self, x):
         print("Forward argument: {}".format(x))
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2drop(self.conv2(x), 2)))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x), 2)))
 
         current_depth = conv_size(conv_size(32))*DEPTH2 / 4
 
