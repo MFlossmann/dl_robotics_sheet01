@@ -3,4 +3,6 @@ data/*
 *.aux
 *.toc
 *.log
+*.out
+*.synctex.gz
 auto/*
