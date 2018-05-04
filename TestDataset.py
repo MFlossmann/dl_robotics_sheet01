@@ -21,7 +21,8 @@ class TestDataset(Dataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        self.landmarks_frame = pd.read_csv(csv_file)
+        self.landmarks_frame = pd.read_csv(csv_file,
+                                           sep=";")
         self.root_dir = root_dir
         self.transform = transform
 
