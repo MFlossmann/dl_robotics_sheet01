@@ -17,6 +17,8 @@ import os
 import copy
 import pandas as pd
 
+from TestDataset import TestDataset, Rescale, Sample2Tensor, SubtractMean
+
 from functools import reduce  # for multiplying every item in a list
 
 gpu = torch.device("cuda")
@@ -136,7 +138,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 model = Net().to(gpu)
-optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+optimizer = optim.SGD(model.parameters(), lr=0.0001, momentum=0.5)
 
 def train(epoch):
     print("training...")
@@ -195,53 +197,52 @@ if __name__ == "__main__":
     num_train_epochs = 10
 
     # ---------- actual training
-    train_loss = np.empty([2,0])  # empty array to store the train losses
-    eval_loss = np.empty([2,0])  # empty array to store the validation losses
-    for epoch in range(num_train_epochs):
-        begin = time.time()
+    TRAINING = True
+    if TRAINING:
+        train_loss = np.empty([2,0])  # empty array to store the train losses
+        eval_loss = np.empty([2,0])  # empty array to store the validation losses
+        for epoch in range(num_train_epochs):
+            begin = time.time()
 
-        # 1-indexing is for suckers and matlab-users
-        train_loss = np.concatenate([train_loss, train(epoch + 1)], axis = 1)
+            # 1-indexing is for suckers and matlab-users
+            train_loss = np.concatenate([train_loss, train(epoch + 1)], axis = 1)
 
-        train_time += time.time() - begin
+            train_time += time.time() - begin
 
-        # eval for this epoch
-        narf = eval(epoch + 1)
-        print("eval vector: ".format(narf))
-        eval_loss = np.concatenate([eval_loss, eval(epoch + 1)], axis = 1)
-        print("Training time:\t{:}m {:2.0f}s".format(int(train_time / 60),
+            # eval for this epoch
+            eval_loss = np.concatenate([eval_loss, eval(epoch + 1)], axis = 1)
+            print("Training time:\t{:}m {:2.0f}s".format(int(train_time / 60),
                                                      train_time % 60))
-    import csv
-    import datetime
-    #    with open(datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".csv", 'w') as csvfile:
-    #        writer = csv.writer(csvfile, delimiter="\t")
-    df = pd.DataFrame([train_loss[0,:], train_loss[1,:],
-                       eval_loss[0,:], eval_loss[1,:]]).T
-    df.to_csv(datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".csv",
-              sep="\t",
-              header=["train_loss", "train_epoch","eval_loss", "eval_epoch"],
-              index=False)
-    # [writer.writerow(["train_loss", "train_epoch","eval_loss", "eval_epoch"])]
-    # [writer.writerow([train_loss[0,i], train_loss[1,i],
-    #                   eval_loss[0,i], eval_loss[1,i]]) for i in range(complete_runs)]
+            import datetime
+            #    with open(datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".csv", 'w') as csvfile:
+            #        writer = csv.writer(csvfile, delimiter="\t")
+            df = pd.DataFrame([train_loss[0,:], train_loss[1,:],
+                               eval_loss[0,:], eval_loss[1,:]]).T
+            df.to_csv(datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S") + ".csv",
+                      sep="\t",
+                      header=["train_loss", "train_epoch","eval_loss", "eval_epoch"],
+                      index=False)
 
-    TESTING = True
+    TESTING = False
 
     if (TESTING):
-        import TestDataset
+        test_dataset = TestDataset('data/GT-final_test.csv', 'data/GTSRB/Final_Test/Images',
+                                   transform=transforms.Compose([Rescale(32),
+                                                                 SubtractMean(),
+                                                                 Sample2Tensor()]))
 
-        test_dataset = TestDataset('data/GT-final_test.csv', 'data/GTSRB/Final_Test_GT',
-                                   data_transforms['Test'])
         test_loader = torch.utils.data.DataLoader(test_dataset,
-                                                      shuffle=False,
-                                                      pin_memory=True)  # load to cuda immediately
+                                                  shuffle=False,
+                                                  pin_memory=False)  # load to cuda immediately
 
         model.eval()
         correct = 0
         with torch.no_grad():
             test_losses = np.zeros((len(test_loader)))
-            for batch_idx, (data, target) in enumerate(test_loader):
-                data, target = data.to(gpu), target.to(gpu)
+            for batch_idx, data_set in enumerate(test_loader):
+                data = data_set['image']
+                target = data_set['target']
+                data, target = data.to(gpu, dtype=torch.float), target.to(gpu, dtype=torch.float)
                 output = model(data)
                 test_losses[batch_idx] = F.cross_entropy(output, target, size_average=True).item() # sum up batch loss
                 pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
