@@ -29,7 +29,7 @@ data_transforms = {
     'Training': transforms.Compose([
         transforms.Resize((32, 32)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [1,1,1]) # [0.229, 0.224, 0.225])
+        transforms.Normalize([0.5, 0.5, 0.5], [1,1,1]) # [0.229, 0.224, 0.225])
     ]),
     'Test': transforms.Compose([
         transforms.Resize((32,32)),
@@ -39,7 +39,7 @@ data_transforms = {
 }
 
 dataset = datasets.ImageFolder(os.path.join(data_dir, "Final_{}".format('Training'), "Images"),
-                                        data_transforms['Training'])
+                               data_transforms['Training'])
 
 # -------------------- Split up the data
 data_size = len(dataset)
@@ -68,16 +68,18 @@ split_samplers = {'Training':
                                         int(sum(val_weights)),
                                         replacement=False)}
 
+BATCH_SIZE = 16
+
 training_loader = torch.utils.data.DataLoader(dataset,
-                                              batch_size = 1,
+                                              batch_size = BATCH_SIZE,
                                               shuffle=False,
                                               pin_memory=True,  # load to cuda immediately
                                               sampler=split_samplers['Training'])
 validation_loader = torch.utils.data.DataLoader(dataset,
-                                              batch_size = 1,
-                                              shuffle=False,
-                                              pin_memory=True,  # load to cuda immediately
-                                              sampler=split_samplers['Validation'])
+                                                batch_size = 1,
+                                                shuffle=False,
+                                                pin_memory=True,  # load to cuda immediately
+                                                sampler=split_samplers['Validation'])
 
 class_names = dataset.classes
 
@@ -93,14 +95,11 @@ print("Datasize for training: {0}\nDatasize for validation: {1}\nAmount classes:
 KERNEL_SIZE = 3
 CONV_STRIDE = 1
 PADDING = 1
-conv_size = lambda w: (w - KERNEL_SIZE + PADDING*2)/CONV_STRIDE + 1
-pooled_size = lambda w: int(conv_size(w)/2)
+conv_size = lambda w,p: (w - KERNEL_SIZE + p*2)/CONV_STRIDE + 1
+pooled_size = lambda w,p: int(conv_size(w,p)/2)
 
-DEPTH1 = 30
-DEPTH2 = 60
-DEPTH3 = 120
-
-MAGIC_DEPTH = 5645520
+DEPTH1 = 10
+DEPTH2 = 20
 
 class Net(nn.Module):
     def __init__(self):
@@ -110,13 +109,10 @@ class Net(nn.Module):
                                padding=PADDING)
         self.conv2 = nn.Conv2d(DEPTH1, DEPTH2,
                                kernel_size=KERNEL_SIZE,
-                               padding=PADDING)
-        self.conv3 = nn.Conv2d(DEPTH2, DEPTH3,
-                               kernel_size=KERNEL_SIZE,
-                               padding=PADDING)
-        self.conv3_drop = nn.Dropout2d()
+                               padding=0)
+        self.conv2_drop = nn.Dropout2d()
 
-        dimension_after_conv = (pooled_size(pooled_size(pooled_size(32)))**2)*DEPTH3
+        dimension_after_conv = (pooled_size(pooled_size(32,1),0)**2)*DEPTH2
 
         self.fc1 =nn.Linear(dimension_after_conv, 512)
         self.fc2 = nn.Linear(512, amount_classes)
@@ -124,20 +120,20 @@ class Net(nn.Module):
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2(x), 2))
-        x = F.relu(F.max_pool2d(self.conv3_drop(self.conv3(x)), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
 
-        current_depth = reduce(lambda x, y: x*y, list(x.shape))
+        x = F.dropout(x, training = self.training)
 
+        current_depth = reduce(lambda x, y: x*y, list(x.shape[1:]))
         x = x.view(-1, current_depth)
 
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
 
-        return F.softmax(x)
+        return F.softmax(x, dim=1)
 
 model = Net().to(gpu)
-optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.5)
+optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
 
 def train(epoch):
     print("training...")
@@ -150,6 +146,7 @@ def train(epoch):
         # Forward pass of the neural net
         output = model(data)
         # Calculation of the loss function
+        # loss = F.nll_loss(output, target)
         loss = F.cross_entropy(output, target)
         # Backward pass (gradient computation)
         loss.backward()
@@ -157,7 +154,7 @@ def train(epoch):
         optimizer.step()
         if batch_idx % 10 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(training_loader),
+                epoch, batch_idx, len(training_loader),
                 100. * batch_idx / len(training_loader), loss.item()))
 
 num_train_epochs = 5
